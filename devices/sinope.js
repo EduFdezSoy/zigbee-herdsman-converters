@@ -21,8 +21,8 @@ module.exports = [
             tz.sinope_thermostat_occupancy, tz.sinope_thermostat_backlight_autodim_param, tz.sinope_thermostat_time,
             tz.sinope_thermostat_enable_outdoor_temperature, tz.sinope_thermostat_outdoor_temperature, tz.sinope_time_format],
         exposes: [e.local_temperature(), e.keypad_lockout(), e.power(), e.current(), e.voltage(), e.energy(),
-            exposes.climate().withSetpoint('occupied_heating_setpoint', 7, 30, 0.5).withLocalTemperature()
-                .withSystemMode(['off', 'auto', 'heat']).withRunningState(['idle', 'heat']),
+            exposes.climate().withSetpoint('occupied_heating_setpoint', 5, 30, 0.5).withLocalTemperature()
+                .withSystemMode(['off', 'heat']).withRunningState(['idle', 'heat']),
             exposes.enum('backlight_auto_dim', ea.SET, ['on demand', 'sensing']).withDescription('Control backlight dimming behavior')],
         configure: async (device, coordinatorEndpoint, logger) => {
             const endpoint = device.getEndpoint(1);
@@ -78,8 +78,8 @@ module.exports = [
             tz.sinope_thermostat_occupancy, tz.sinope_thermostat_backlight_autodim_param, tz.sinope_thermostat_time,
             tz.sinope_thermostat_enable_outdoor_temperature, tz.sinope_thermostat_outdoor_temperature, tz.sinope_time_format],
         exposes: [e.local_temperature(), e.keypad_lockout(), e.power(), e.current(), e.voltage(), e.energy(),
-            exposes.climate().withSetpoint('occupied_heating_setpoint', 7, 30, 0.5).withLocalTemperature()
-                .withSystemMode(['off', 'auto', 'heat']).withRunningState(['idle', 'heat']).withPiHeatingDemand(),
+            exposes.climate().withSetpoint('occupied_heating_setpoint', 5, 30, 0.5).withLocalTemperature()
+                .withSystemMode(['off', 'heat']).withRunningState(['idle', 'heat']).withPiHeatingDemand(),
             exposes.enum('backlight_auto_dim', ea.SET, ['on demand', 'sensing']).withDescription('Control backlight dimming behavior')],
         configure: async (device, coordinatorEndpoint, logger) => {
             const endpoint = device.getEndpoint(1);
@@ -240,11 +240,62 @@ module.exports = [
         model: 'SW2500ZB',
         vendor: 'Sinopé',
         description: 'Zigbee smart light switch',
-        extend: extend.switch(),
+        exposes: [e.switch(),
+            exposes.numeric('led_intensity_on', ea.SET).withValueMin(0).withValueMax(100)
+                .withDescription('Control status LED intensity when load ON'),
+            exposes.numeric('led_intensity_off', ea.SET).withValueMin(0).withValueMax(100)
+                .withDescription('Control status LED intensity when load OFF'),
+            exposes.composite('led_color_on', 'led_color_on')
+                .withFeature(exposes.numeric('r', ea.ALL))
+                .withFeature(exposes.numeric('g', ea.ALL))
+                .withFeature(exposes.numeric('b', ea.ALL))
+                .withDescription('Control status LED intensity when load ON'),
+            exposes.composite('led_color_off', 'led_color_off')
+                .withFeature(exposes.numeric('r', ea.ALL))
+                .withFeature(exposes.numeric('g', ea.ALL))
+                .withFeature(exposes.numeric('b', ea.ALL))
+                .withDescription('Control status LED color when load OFF'),
+        ],
+        fromZigbee: [fz.on_off, fz.electrical_measurement],
+        toZigbee: [tz.on_off, tz.sinope_led_intensity_on, tz.sinope_led_intensity_off, tz.sinope_led_color_on, tz.sinope_led_color_off],
         configure: async (device, coordinatorEndpoint, logger) => {
             const endpoint = device.getEndpoint(1);
             await reporting.bind(endpoint, coordinatorEndpoint, ['genOnOff']);
             await reporting.onOff(endpoint);
+        },
+    },
+    {
+        zigbeeModel: ['DM2500ZB'],
+        model: 'DM2500ZB',
+        vendor: 'Sinopé',
+        description: 'Zigbee smart dimmer',
+        exposes: [e.light_brightness(),
+            exposes.numeric('led_intensity_on', ea.SET).withValueMin(0).withValueMax(100)
+                .withDescription('Control status LED when load ON'),
+            exposes.numeric('led_intensity_off', ea.SET).withValueMin(0).withValueMax(100)
+                .withDescription('Control status LED when load OFF'),
+            exposes.numeric('minimum_brightness', ea.SET).withValueMin(0).withValueMax(3000)
+                .withDescription('Control minimum dimmer brightness'),
+            exposes.composite('led_color_on', 'led_color_on')
+                .withFeature(exposes.numeric('r', ea.ALL))
+                .withFeature(exposes.numeric('g', ea.ALL))
+                .withFeature(exposes.numeric('b', ea.ALL))
+                .withDescription('Control status LED intensity when load ON'),
+            exposes.composite('led_color_off', 'led_color_off')
+                .withFeature(exposes.numeric('r', ea.ALL))
+                .withFeature(exposes.numeric('g', ea.ALL))
+                .withFeature(exposes.numeric('b', ea.ALL))
+                .withDescription('Control status LED color when load OFF'),
+        ],
+        fromZigbee: [fz.on_off, fz.brightness, fz.electrical_measurement],
+        toZigbee: [tz.light_onoff_brightness, tz.sinope_led_intensity_on, tz.sinope_led_intensity_off,
+            tz.sinope_minimum_brightness, tz.sinope_led_color_on, tz.sinope_led_color_off],
+        configure: async (device, coordinatorEndpoint, logger) => {
+            await extend.light_onoff_brightness().configure(device, coordinatorEndpoint, logger);
+            const endpoint = device.getEndpoint(1);
+            await reporting.bind(endpoint, coordinatorEndpoint, ['genOnOff', 'genLevelCtrl']);
+            await reporting.onOff(endpoint);
+            await reporting.brightness(endpoint);
         },
     },
     {
@@ -277,26 +328,6 @@ module.exports = [
             await reporting.readEletricalMeasurementMultiplierDivisors(endpoint);
             await reporting.onOff(endpoint);
             await reporting.activePower(endpoint, {min: 10, change: 1});
-        },
-    },
-    {
-        zigbeeModel: ['DM2500ZB'],
-        model: 'DM2500ZB',
-        vendor: 'Sinopé',
-        description: 'Zigbee smart dimmer',
-        extend: extend.light_onoff_brightness({noConfigure: true}),
-        exposes: [e.light_brightness(), e.effect(), exposes.numeric('led_intensity_on', ea.SET).withValueMin(0).withValueMax(100)
-            .withDescription('Control status LED when load ON'), exposes.numeric('led_intensity_off', ea.SET).withValueMin(0)
-            .withValueMax(100).withDescription('Control status LED when load OFF'), exposes.numeric('minimum_brightness', ea.SET)
-            .withValueMin(0).withValueMax(3000).withDescription('Control minimum dimmer brightness')],
-        toZigbee: [tz.light_onoff_brightness, tz.effect, tz.sinope_led_intensity_on, tz.sinope_led_intensity_off,
-            tz.sinope_minimum_brightness],
-        configure: async (device, coordinatorEndpoint, logger) => {
-            await extend.light_onoff_brightness().configure(device, coordinatorEndpoint, logger);
-            const endpoint = device.getEndpoint(1);
-            await reporting.bind(endpoint, coordinatorEndpoint, ['genOnOff', 'genLevelCtrl']);
-            await reporting.onOff(endpoint);
-            await reporting.brightness(endpoint);
         },
     },
     {
